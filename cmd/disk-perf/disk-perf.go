@@ -5,11 +5,13 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strconv"
+	"strings"
 	"time"
 )
 
 var (
-	bytes    = flag.Int("bytes", 1024<<10, "the number of bytes to read")
+	bytes    = flag.String("bytes", "1g", "the number of bytes to read")
 	filename = flag.String("file", "", "the file to write to")
 )
 
@@ -47,6 +49,28 @@ func main() {
 	fmt.Printf("Wrote %d bytes in %s (%s)\n", written, duration, humanByteRate(float64(written)/duration.Seconds()))
 }
 
+func parseHumanBytes(bytes string) (res int, err error) {
+	bytes = strings.ToLower(bytes)
+	factor := 1
+	switch {
+	case strings.HasSuffix(bytes, "k"):
+		factor = 1024
+		bytes = bytes[0 : len(bytes)-1]
+	case strings.HasSuffix(bytes, "m"):
+		factor = 1024 << 10
+		bytes = bytes[0 : len(bytes)-1]
+	case strings.HasSuffix(bytes, "g"):
+		factor = 1024 << 20
+		bytes = bytes[0 : len(bytes)-1]
+	}
+	var val int64
+	val, err = strconv.ParseInt(bytes, 10, 64)
+	if err != nil {
+		return
+	}
+	return int(val) * factor, err
+}
+
 func humanByteRate(bytesPerSec float64) string {
 	switch {
 	case bytesPerSec < KB:
@@ -63,8 +87,12 @@ func humanByteRate(bytesPerSec float64) string {
 func run(file *os.File) (written int, err error) {
 	w := bufio.NewWriter(file)
 	bs := make([]byte, 4096)
-	for written < *bytes {
-		sz := *bytes - written
+	numBytes, err := parseHumanBytes(*bytes)
+	if err != nil {
+		return written, err
+	}
+	for written < numBytes {
+		sz := numBytes - written
 		if sz > len(bs) {
 			sz = len(bs)
 		}
@@ -74,5 +102,6 @@ func run(file *os.File) (written int, err error) {
 		}
 		written += n
 	}
+	err = w.Flush()
 	return
 }
